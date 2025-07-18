@@ -10,6 +10,7 @@ from services.database import DatabaseService
 from services.course import CourseService
 from services.ai import AIService
 from services.drive import DriveService
+from services.xml import XMLService
 from utils.logging_utils import setup_logging
 
 def course_processor_menu(course_service):
@@ -36,6 +37,7 @@ def main():
     course_service = CourseService(db)
     ai_service = AIService(db)
     drive_service = DriveService(db)
+    xml_service = XMLService(db)
     # menu = MenuRenderer()
     
     # while True:

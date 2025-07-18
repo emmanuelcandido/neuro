@@ -1,1 +1,1 @@
-feat: Implement DriveService for Google Drive integration
+feat: Implement XMLService for RSS feed generation
