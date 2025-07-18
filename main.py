@@ -9,6 +9,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 from services.database import DatabaseService
 from services.course import CourseService
 from services.ai import AIService
+from services.drive import DriveService
 from utils.logging_utils import setup_logging
 
 def course_processor_menu(course_service):
@@ -34,6 +35,7 @@ def main():
     db = DatabaseService()
     course_service = CourseService(db)
     ai_service = AIService(db)
+    drive_service = DriveService(db)
     # menu = MenuRenderer()
     
     # while True:
