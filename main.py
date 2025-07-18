@@ -11,6 +11,7 @@ from services.course import CourseService
 from services.ai import AIService
 from services.drive import DriveService
 from services.xml import XMLService
+from services.github import GitHubService
 from utils.logging_utils import setup_logging
 
 def course_processor_menu(course_service):
@@ -38,6 +39,7 @@ def main():
     ai_service = AIService(db)
     drive_service = DriveService(db)
     xml_service = XMLService(db)
+    github_service = GitHubService(db)
     # menu = MenuRenderer()
     
     # while True:
