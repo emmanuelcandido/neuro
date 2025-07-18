@@ -13,17 +13,25 @@ from services.database import DatabaseService
 
 def main():
     # setup_logging()
-    print("Iniciando a aplicação...")
-    try:
-        db = DatabaseService()
-        print("DatabaseService instanciado com sucesso.")
-        db.create_tables()
-        print("Tabelas criadas ou já existentes.")
-        db.close()
-        print("Conexão com o banco de dados fechada.")
-        print("\n🎓 NEURODEAMON MEDIA PROCESSOR")
-        print("Menu principal exibido com sucesso (simulação).")
-        print("\nSINAL DE SUCESSO: Execução concluída sem erros.")
+    # setup_logging()
+    db = DatabaseService()
+    # course_service = CourseService(db)
+    # menu = MenuRenderer()
+    
+    # while True:
+    #     choice = menu.show_main_menu()
+        
+    #     if choice == "1":  # Course Processor
+    #         course_processor_menu(course_service)
+    #     elif choice == "9":  # Settings
+    #         settings_menu()
+    #     elif choice == "11":  # Logs
+    #         show_logs()
+    #     elif choice == "12":  # Exit
+    #         break
+    print("\n🎓 NEURODEAMON MEDIA PROCESSOR")
+    print("Menu principal exibido com sucesso (simulação).")
+    print("\nSINAL DE SUCESSO: Execução concluída sem erros.")
     except Exception as e:
         print(f"Ocorreu um erro: {e}")
 
