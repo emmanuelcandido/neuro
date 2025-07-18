@@ -7,15 +7,32 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # main.py
 from services.database import DatabaseService
-# from services.course_service import CourseService # Será usado depois
+from services.course_service import CourseService
 # from utils.menu_utils import MenuRenderer # Será criado depois
-# from utils.logging_utils import setup_logging # Será usado depois
+from utils.logging_utils import setup_logging
+
+def course_processor_menu(course_service):
+    pass
+    # while True:
+    #     choice = menu.show_course_processor_menu()
+        
+    #     if choice == "1":  # Process Complete Course
+    #         directory = input("📁 Diretório do curso: ")
+    #         course_service.process_complete_course(directory)
+    #     elif choice == "2":  # Convert to Audio
+    #         course_service.convert_to_audio()
+    #     # ... outras opções
+
+def settings_menu():
+    pass
+
+def show_logs():
+    pass
 
 def main():
-    # setup_logging()
-    # setup_logging()
+    setup_logging()
     db = DatabaseService()
-    # course_service = CourseService(db)
+    course_service = CourseService(db)
     # menu = MenuRenderer()
     
     # while True:
@@ -32,9 +49,6 @@ def main():
     print("\n🎓 NEURODEAMON MEDIA PROCESSOR")
     print("Menu principal exibido com sucesso (simulação).")
     print("\nSINAL DE SUCESSO: Execução concluída sem erros.")
-    except Exception as e:
-        print(f"Ocorreu um erro: {e}")
 
 if __name__ == "__main__":
     main()
-
