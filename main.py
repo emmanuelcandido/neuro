@@ -7,8 +7,8 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # main.py
 from services.database import DatabaseService
-from services.course_service import CourseService
-# from utils.menu_utils import MenuRenderer # Será criado depois
+from services.course import CourseService
+from services.ai import AIService
 from utils.logging_utils import setup_logging
 
 def course_processor_menu(course_service):
@@ -33,6 +33,7 @@ def main():
     setup_logging()
     db = DatabaseService()
     course_service = CourseService(db)
+    ai_service = AIService(db)
     # menu = MenuRenderer()
     
     # while True:

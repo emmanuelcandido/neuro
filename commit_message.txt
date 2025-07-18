@@ -1,1 +1,1 @@
-feat: Implement CourseService basic structure and ffmpeg integration
+feat: Implement AIService with prompt management and API validation
