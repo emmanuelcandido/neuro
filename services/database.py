@@ -76,6 +76,7 @@ class DatabaseService:
                 drive_file_id TEXT,
                 processed BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                relative_path TEXT,
                 FOREIGN KEY (course_id) REFERENCES courses (id)
             );
             """,
@@ -114,6 +115,19 @@ class DatabaseService:
         ]
         for query in queries:
             self._execute_query(query, commit=True)
+
+        # Add relative_path column if it doesn't exist
+        try:
+            self._execute_query("ALTER TABLE episodes ADD COLUMN relative_path TEXT;", commit=True)
+            # logger.info("Coluna 'relative_path' adicionada à tabela 'episodes'.")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                # logger.info("Coluna 'relative_path' já existe na tabela 'episodes'.")
+                pass # Column already exists, no action needed
+            else:
+                # logger.error(f"Erro ao adicionar coluna 'relative_path': {e}")
+                raise # Re-raise other operational errors
+
         # logger.info("Tabelas verificadas/criadas com sucesso.")
 
     def create_course(self, name, source_path):
@@ -135,15 +149,20 @@ class DatabaseService:
         query = "SELECT * FROM courses WHERE name = ?"
         return self._execute_query(query, (name,), fetchone=True)
 
+    def get_course_by_id(self, course_id):
+        # logger.info(f"Buscando curso por ID: {course_id}")
+        query = "SELECT * FROM courses WHERE id = ?"
+        return self._execute_query(query, (course_id,), fetchone=True)
+
     def update_course_status(self, course_id, status):
         # logger.info(f"Atualizando status do curso {course_id} para {status}")
         query = "UPDATE courses SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         self._execute_query(query, (status, course_id), commit=True)
 
-    def create_episode(self, course_id, filename, title):
+    def create_episode(self, course_id, filename, title, audio_path=None, duration=0, file_size=0, relative_path=None):
         # logger.info(f"Criando episódio '{filename}' para o curso {course_id}")
-        query = "INSERT INTO episodes (course_id, filename, title) VALUES (?, ?, ?)"
-        return self._execute_query(query, (course_id, filename, title), commit=True)
+        query = "INSERT INTO episodes (course_id, filename, title, audio_path, duration, file_size, relative_path) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        return self._execute_query(query, (course_id, filename, title, audio_path, duration, file_size, relative_path), commit=True)
 
     def get_episodes_by_course(self, course_id):
         # logger.info(f"Buscando episódios para o curso {course_id}")
@@ -197,6 +216,21 @@ class DatabaseService:
         # logger.info(f"Atualizando status da operação {operation_id} para {status}")
         query = "UPDATE operations SET status = ?, details = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
         self._execute_query(query, (status, details, error_message, operation_id), commit=True)
+
+    def clear_all_tables(self):
+        # logger.warning("Limpando todas as tabelas do banco de dados.")
+        tables = ['prompt_usage', 'operations', 'episodes', 'courses', 'settings']
+        for table in tables:
+            self._execute_query(f"DELETE FROM {table}", commit=True)
+        # logger.info("Todas as tabelas foram limpas.")
+
+    def forget_course(self, course_id):
+        # logger.info(f"Removendo curso {course_id} e seus dados associados.")
+        self._execute_query("DELETE FROM prompt_usage WHERE course_id = ?", (course_id,), commit=True)
+        self._execute_query("DELETE FROM operations WHERE course_id = ?", (course_id,), commit=True)
+        self._execute_query("DELETE FROM episodes WHERE course_id = ?", (course_id,), commit=True)
+        self._execute_query("DELETE FROM courses WHERE id = ?", (course_id,), commit=True)
+        # logger.info(f"Curso {course_id} removido do banco de dados.")
 
     def log_prompt_usage(self, course_id, prompt_name, prompt_content, ai_service, response_content):
         # logger.info(f"Registrando uso de prompt para o curso {course_id}: {prompt_name}")

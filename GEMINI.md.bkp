@@ -1,0 +1,1485 @@
+# GEMINI\_DEV\_PROTOCOL.md
+
+## Protocolo de Autocorreção com Supervisão Inteligente
+
+### 🔑 OBJETIVO
+
+Executar `main.py` e corrigir automaticamente os erros encontrados, até o app funcionar corretamente, com segurança contra loops silenciosos ou travamentos e comunicação constante com o operador.
+
+---
+
+### ⚖️ REGRAS DE EXECUÇÃO E CORREÇÃO
+
+#### 1. **Após cada execução de `main.py`**:
+
+* Se houver **erro novo**, corrija e tente novamente.
+* Se for o **mesmo erro anterior**, tente uma **solução alternativa**.
+* Se a **mesma exceção ocorrer 3x seguidas**, **pause e peça confirmação**.
+
+#### 2. **Antes de executar**:
+
+* Verifique se o código contém prompts interativos (`input()`, `Prompt.ask`, `select`, etc.).
+* Se houver, **não execute**. Apenas me avise: "Execução requer input interativo. Deseja fornecer?"
+
+#### 3. **Durante execução**:
+
+* Se **não houver output por mais de 10 segundos**, ou
+* Se ficar **suspenso aguardando input**,
+
+Interrompa e reporte: "Execução travada ou aguardando input."
+
+#### 4. **Após cada correção**:
+
+* Logue:
+
+  * O erro original
+  * O patch aplicado
+  * A resposta esperada
+* Verifique se a **mesma correção já foi tentada antes**.
+
+  * Se sim, **tente abordagem alternativa**.
+* Se chegar a **5 correções consecutivas sem sucesso**, pare e diga:
+
+  * "Loop de autocorreção detectado. Deseja continuar ou intervir manualmente?"
+
+---
+
+### ⚜️ PRIORIDADES
+
+* Continuidade na execução até o app funcionar
+* Segurança contra loops silenciosos e travamentos
+* Criatividade para gerar novas abordagens quando uma falha se repete
+
+---
+
+### 💬 COMUNICAÇÃO CONTÍNUA (Watchdog Cognitivo)
+
+* Sempre informe **o que está fazendo** (ex: "Corrigindo...", "Executando...", "Gerando menus...")
+* Atualize o status a cada **1 a 2 minutos** durante qualquer operação
+* Se **nenhuma comunicação for feita em 7 minutos**, assumiremos travamento. Operador pode cancelar e reiniciar.
+
+---
+
+### 🔢 TESTES DEPENDENTES DE INPUT EXTERNO (Modo Colaborativo)
+
+Se uma funcionalidade exigir input que **não pode ser simulado automaticamente** 
+
+* Me **peça explicitamente** para fornecer esse dado (e caso você não consiga sozinho, eu vou performar as açòes dentro do app e você vai colher o do que aconteceu pelo log), se isso não for possível, me instrua como executar localmente e **retornar o output** que você precisa. você pode combinar as duas abordagens se julgar necessário. 
+
+* Sempre prefira me incluir no loop de teste **quando necessário.**
+
+---
+
+### ⚛️ POSICIONAMENTO FINAL
+
+Este protocolo permite que o Gemini CLI opere com autonomia responsável:
+
+* Suficiente para corrigir e evoluir o sistema
+* Sem perder visibilidade, controle ou contexto
+* Permite que o operador intervenha apenas quando realmente necessário
+
+
+
+# CONTEXTO
+Você é um especialista em criar aplicações Python CLI robustas para processamento de cursos em vídeo. O usuário possui cursos organizados em pastas hierárquicas com arquivos de vídeo e precisa de um sistema completo que:
+
+1. **Converta vídeos para áudio** com preservação da estrutura de pastas
+2. **Transcreva áudios** usando Whisper (OpenAI online ou local via Docker)
+3. **Gere resumos inteligentes** via IA (Claude, ChatGPT, Gemini, Ollama)
+4. **Crie podcasts unificados** com timestamps automáticos
+5. **Distribua automaticamente** via Google Drive e feed RSS
+6. **Mantenha histórico completo** com sistema de recuperação de falhas
+
+O sistema deve ser **modular** (cada etapa executável individualmente), **resiliente** (recuperação automática de falhas) e **escalável** (suporte a múltiplas funções core futuras).
+
+# ARQUITETURA
+
+## Estrutura de Arquivos
+
+CursoProcessor/
+├── main.py                     # Entrada principal
+├── data/
+│   ├── neurodeamon.db         # Database SQLite
+│   ├── courses/               # Cache de cursos processados
+│   │   └── [CURSO_NAME]/
+│   │       ├── audios/        # Áudios convertidos
+│   │       ├── transcriptions/ # Transcrições brutas
+│   │       ├── summaries/     # Resumos individuais
+│   │       ├── final/         # Arquivos finais
+│   │       └── metadata.json  # Status do processamento
+│   └── logs/                  # Logs detalhados
+├── config/
+│   ├── settings.json          # Configurações gerais
+│   ├── api_keys.json          # Chaves API (criptografadas)
+│   └── directories.json       # Diretórios configurados
+├── prompts/
+│   ├── course_processor/
+│   │   ├── Resumo Completo.md # Prompt padrão fornecido
+│   │   ├── Resumo Técnico.md  # Versão técnica
+│   │   └── Resumo Rápido.md   # Versão expressa
+│   └── [outras_funcoes]/      # Prompts para funções futuras
+├── services/
+│   ├── database_service.py    # Gerenciamento SQLite
+│   ├── course_service.py      # Lógica de processamento
+│   ├── ai_service.py          # Integração com IAs
+│   ├── drive_service.py       # Google Drive API
+│   ├── github_service.py      # Git automation
+│   ├── audio_service.py       # Conversão e processamento
+│   └── xml_service.py         # Geração de feeds RSS
+├── utils/
+│   ├── file_utils.py          # Operações de arquivo
+│   ├── validation.py          # Validação de dados
+│   ├── recovery.py            # Sistema de recuperação
+│   └── logging_utils.py       # Sistema de logs
+├── temp/                      # Arquivos temporários
+│   ├── audio_conversion/      # Conversão temporária
+│   ├── transcriptions/        # Transcrições em processo
+│   └── processing/            # Processamento ativo
+└── github/                    # Repository local
+    └── neurodeamon-feeds/     # Clone do repositório
+        ├── cursos.xml         # Feed de cursos
+        ├── youtube.xml        # Para YouTube Manager
+        └── assets/            # Recursos compartilhados
+
+
+## Database Schema (SQLite)
+
+-- Tabela principal de cursos
+CREATE TABLE courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    directory_path TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    total_videos INTEGER DEFAULT 0,
+    total_duration_seconds INTEGER DEFAULT 0,
+    processing_stage TEXT DEFAULT 'not_started'
+);
+
+-- Tabela de episódios/vídeos
+CREATE TABLE episodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER REFERENCES courses(id),
+    filename TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    duration_seconds INTEGER DEFAULT 0,
+    file_size_bytes INTEGER DEFAULT 0,
+    hierarchy_level INTEGER DEFAULT 0,
+    sort_order INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'pending'
+);
+
+-- Tabela de operações/logs
+CREATE TABLE operations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER REFERENCES courses(id),
+    operation_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    error_message TEXT,
+    details TEXT
+);
+
+-- Tabela de configurações
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabela de prompts utilizados
+CREATE TABLE prompt_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER REFERENCES courses(id),
+    prompt_name TEXT NOT NULL,
+    prompt_content TEXT NOT NULL,
+    used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+# TAREFA
+
+## Menu Principal
+
+🎓 NEURODEAMON MEDIA PROCESSOR
+┌─────────────────────────────────────────────────┐
+│ 📺 Media                                        │
+│ [1] 🎓 Course Processor                         │
+│ [2] 📹 YouTube Manager                          │
+│ [3] 📡 Feed                                     │
+│ [4] ✂️ Snipd                                    │
+│                                                 │
+│ 📝 Notes                                        │
+│ [5] 🧠 Manage Obsidian Vault                    │
+│ [6] 👥 Authors                                  │
+│ [7] ❓ Questions                                │
+│ [8] 📚 Wiki                                     │
+│                                                 │
+│ ⚙️ Configuration                                │
+│ [9] 🔧 Settings                                 │
+│                                                 │
+│ 📊 Information                                  │
+│ [10] 📈 Monitor                                 │
+│ [11] 📋 Logs                                    │
+│ [12] 🚪 Exit                                    │
+└─────────────────────────────────────────────────┘
+
+
+## Submenu Course Processor
+
+🎓 COURSE PROCESSOR
+┌─────────────────────────────────────────────────┐
+│ 🎯 Core Processing                              │
+│ [1] 📁 Process Complete Course                  │
+│                                                 │
+│ 🔧 Individual Operations                        │
+│ [2] 🎬 Convert Courses to Audio                 │
+│ [3] 📝 Transcribe Audio Files                   │
+│ [4] 🤖 Generate AI Course Summaries             │
+│ [5] 🎵 Create Unified Audio                     │
+│ [6] ⏱️ Generate Timestamps Only                 │
+│ [7] 🎙️ Generate Course TTS Audio Notes          │
+│                                                 │
+│ ☁️ Cloud & Distribution                         │
+│ [8] 📤 Upload Course to Google Drive            │
+│ [9] 📋 Update courses.xml                       │
+│ [10] 🔄 Update GitHub Repository                │
+│                                                 │
+│ 📊 Course Management                            │
+│ [11] 📋 Course Status Check                     │
+│ [12] 🗑️ Forget Course                           │
+│ [13] 🗑️ Clear All Data                          │
+│                                                 │
+│ [0] ⬅️ Back to Main Menu                        │
+└─────────────────────────────────────────────────┘
+
+
+## Submenu Configurações
+
+⚙️ CONFIGURAÇÕES
+┌─────────────────────────────────────────────────┐
+│ 🌐 Configurações Gerais                         │
+│ [1] 🔑 API Keys & Validation                    │
+│ [2] 🎙️ Voice Settings                           │
+│ [3] 📁 Output Directory                         │
+│ [4] 🗂️ GitHub Repository                        │
+│ [5] 🧹 Cleanup Tools                            │
+│                                                 │
+│ 🎓 Course Processor                             │
+│ [6] 🎯 Processing Preferences                   │
+│                                                 │
+│ [0] ⬅️ Back to Main Menu                        │
+└─────────────────────────────────────────────────┘
+
+
+## Fluxo Principal: Process Complete Course
+
+### 1. **Descoberta e Validação**
+- Solicitar diretório do curso
+- Verificar se curso já foi processado (consultar database)
+- Escanear estrutura de arquivos (vídeos suportados: .mp4, .avi, .mkv, .mov)
+- Calcular hierarquia de pastas e ordem de processamento
+- Mostrar preview da estrutura e timestamps estimados
+
+### 2. **Preparação**
+- Criar entrada na database se não existir
+- Configurar diretórios de trabalho
+- Verificar espaço em disco
+- Validar APIs necessárias
+
+### 3. **Conversão de Vídeo para Áudio**
+- Converter todos os vídeos para MP3 128kbps usando ffmpeg
+- Preservar estrutura de pastas em `data/courses/[CURSO]/audios/`
+- Copiar áudios para diretório do curso original
+- Calcular duração total e timestamps
+- Atualizar database com progresso
+
+### 4. **Transcrição**
+- **Opção A**: OpenAI Whisper API (padrão)
+- **Opção B**: Whisper local via Docker (`onerahmet/openai-whisper-asr-webservice`)
+- Processar cada áudio individualmente
+- Salvar transcrições brutas em `data/courses/[CURSO]/transcriptions/`
+- Detectar idioma automaticamente
+
+### 5. **Geração de Resumos via IA**
+- Permitir seleção de prompt da pasta `prompts/course_processor/`
+- **IA padrão**: Claude (suporte a ChatGPT, Gemini, Ollama)
+- Para cada transcrição:
+  - Enviar prompt + transcrição para IA
+  - Detectar necessidade de continuação ([CONTINUA])
+  - Enviar [CONTINUAR] até receber [FIM]
+  - Limpar marcadores de controle da resposta final
+  - Salvar resumo em `data/courses/[CURSO]/summaries/`
+
+### 6. **Unificação de Conteúdo**
+- Criar `Resumo.md` unificado seguindo hierarquia:
+  - Pastas = H1
+  - Arquivos = H2
+  - Sub-pastas = H2
+  - Sub-arquivos = H3
+- Unificar todos os áudios em um podcast único
+- Calcular timestamps baseados na duração real dos vídeos
+- Criar `timestamps.md` com estrutura:
+  
+  Marketing Digital
+  1. O que é marketing digital?
+      00:00 Como subir sua primeira campanha?
+      01:30 Tudo o que você precisa saber
+  
+
+### 7. **Distribuição**
+- **Google Drive**: Upload para `Media/Cursos/[NOME_DO_CURSO]/`
+  - Áudio unificado
+  - Resumo.md
+  - timestamps.md
+  - Áudios individuais
+  - Transcrições
+  - Resumos individuais
+- **Feed RSS**: Atualizar `cursos.xml` com novo episódio
+- **GitHub**: Commit e push automático
+- **Local**: Copiar arquivos finais para diretório do curso
+
+### 8. **Finalização**
+- Marcar curso como concluído na database
+- Gerar relatório de processamento
+- Logs detalhados de todas as operações
+- Limpeza de arquivos temporários
+
+## Funcionalidades Individuais
+
+### Convert Courses to Audio
+- Apenas conversão vídeo → áudio
+- Preservar estrutura de pastas
+- Calcular durações e timestamps
+- Atualizar database
+
+### Transcribe Audio Files
+- Transcrever áudios já convertidos
+- Escolher entre Whisper online/local
+- Detecção automática de idioma
+- Salvar transcrições brutas
+
+### Generate AI Course Summaries
+- Processar transcrições existentes
+- Seleção interativa de prompt
+- Suporte a múltiplas IAs
+- Sistema de continuação automática
+- Limpeza de marcadores de controle
+
+### Create Unified Audio
+- Unificar áudios em podcast único
+- Calcular timestamps precisos
+- Normalização de volume (opcional)
+- Formato MP3 128kbps
+
+### Generate Timestamps Only
+- Calcular timestamps baseados em duração real
+- Gerar arquivo `timestamps.md`
+- Estrutura hierárquica preservada
+
+### Generate Course TTS Audio Notes
+- Converter resumos em áudio usando Edge-TTS
+- Remover formatação Markdown
+- Limpar YAML headers
+- Vozes padrão:
+  - **PT-BR**: `pt-BR-AntonioNeural`
+  - **EN-US**: `en-US-AriaNeural`
+- Detecção automática de idioma
+
+### Upload Course to Google Drive
+- Estrutura: `Media/Cursos/[NOME_DO_CURSO]/`
+- Todos os arquivos processados
+- Marcar como público para podcast
+- Gerar URLs compatíveis com RSS
+
+### Update courses.xml
+- Adicionar novo episódio ao feed
+- Template de descrição:
+  
+  <description><![CDATA[
+  ⏱️ Timestamps
+  [TIMESTAMPS_AQUI]
+  
+  🌐 Links
+  [LINKS_SE_HOUVER]
+  
+  📝 Descrição
+  [DESCRIÇÃO_DO_CURSO]
+  ]]></description>
+  
+
+### Course Status Check
+- Consultar database para status
+- Mostrar progresso detalhado
+- Identificar etapas pendentes
+- Opção de retomar processamento
+
+### Forget Course
+- **Confirmação dupla** antes de executar
+- Remover entrada da database
+- Opção de manter/remover arquivos locais
+- Logs da operação
+
+## Sistema de Recuperação de Falhas
+
+### Checkpoints Automáticos
+- Salvar progresso após cada etapa
+- Detectar processamento interrompido
+- Oferecer retomada automática
+- Mostrar ponto exato de parada
+
+### Tratamento de Erros
+- Rate limits de API → switch para alternativa
+- Falhas de rede → retry automático
+- Arquivos corrompidos → skip com log
+- Espaço em disco → alerta e pausa
+
+# INTEGRAÇÕES
+
+## APIs Necessárias
+- **OpenAI**: Whisper (transcrição) + ChatGPT (resumos)
+- **Anthropic**: Claude (resumos - padrão)
+- **Google**: Gemini (resumos)
+- **Google Drive**: Upload e organização
+- **GitHub**: Automação de commits
+
+## Validação de APIs
+Menu dedicado para testar conectividade:
+
+🔑 API VALIDATION
+┌─────────────────────────────────────────────────┐
+│ Claude API      [🟢 Active - 50,000 tokens remaining]    │
+│ ChatGPT API     [🟢 Active - $15.67 credit remaining]    │
+│ Gemini API      [🟡 Warning - Rate limit at 80%]        │
+│ Google Drive    [🟢 Active - 12.4GB available]          │
+│ Ollama Local    [🔴 Offline - Service not running]      │
+│ Whisper API     [🟢 Active - 200 minutes remaining]     │
+│                                                         │
+│ [1] 🔄 Refresh All Status                               │
+│ [2] 🧪 Test Individual API                              │
+│ [3] 🔧 Configure API Keys                               │
+│ [4] 📊 Usage Statistics                                 │
+│                                                         │
+│ [0] ⬅️ Back                                              │
+└─────────────────────────────────────────────────────────┘
+
+
+## Dependências Automáticas
+- **ffmpeg**: Conversão de vídeo (verificar instalação)
+- **edge-tts**: Síntese de voz (pip install)
+- **docker**: Para Whisper local (opcional)
+- **git**: Automação GitHub
+
+# ARQUIVOS
+
+## Política de Saída
+- **Script interno**: `data/courses/[CURSO]/` (cache permanente)
+- **Diretório do curso**: Cópias úteis junto aos vídeos originais
+- **Output Directory**: Organização personalizada (configurável)
+- **Google Drive**: `Media/Cursos/[CURSO]/` (distribuição)
+- **GitHub**: `neurodeamon-feeds/cursos.xml` (feed público)
+
+## Estrutura de Arquivos no Diretório do Curso
+
+/caminho/do/curso/
+├── video1.mp4                  # Arquivos originais
+├── video2.mp4
+├── Resumo.md                   # Resumo unificado
+├── timestamps.md               # Timestamps calculados
+├── [CURSO_NAME].mp3            # Podcast completo
+└── audios/                     # Áudios individuais (opcional)
+    ├── video1.mp3
+    └── video2.mp3
+
+
+## Google Drive - Estrutura Completa
+
+Media/Cursos/[NOME_DO_CURSO]/
+├── [NOME_DO_CURSO].mp3         # Áudio principal (link no XML)
+├── Resumo.md                   # Resumo completo
+├── timestamps.md               # Timestamps
+├── audios/                     # Áudios individuais
+├── transcriptions/             # Transcrições brutas
+├── summaries/                  # Resumos individuais
+└── metadata.json               # Metadados do curso
+
+
+## Feed RSS - Template Completo
+
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+<channel>
+  <title>[NOME_DO_PODCAST]</title>
+  <description>[DESCRIÇÃO_GERAL]</description>
+  <link>[WEBSITE_OPCIONAL]</link>
+  <language>pt-BR</language>
+  <itunes:image href="[URL_CAPA]"/>
+  <itunes:category text="Education"/>
+  
+  <item>
+    <title>[NOME_DO_CURSO]</title>
+    <description><![CDATA[
+    ⏱️ Timestamps
+    00:00 - Introdução ao Marketing Digital
+    02:30 - Primeira campanha
+    05:15 - Estratégias avançadas
+    
+    🌐 Links
+    Curso Original: https://exemplo.com/curso
+    Material Complementar: https://exemplo.com/material
+    
+    📝 Descrição
+    Este curso apresenta os conceitos fundamentais do marketing digital...
+    ]]></description>
+    <enclosure url="[GOOGLE_DRIVE_LINK]" length="[TAMANHO_BYTES]" type="audio/mpeg"/>
+    <pubDate>[DATA_PUBLICACAO]</pubDate>
+    <guid>[GUID_UNICO]</guid>
+  </item>
+</channel>
+</rss>
+
+
+# RESTRIÇÕES
+
+## Padrões NeuroDeamon
+- **Interface**: Cores Nord, títulos ASCII art com pyfiglet
+- **Navegação**: ESC/0 para voltar, confirmações padronizadas
+- **Progresso**: Barras apenas para operações >2s
+- **Configuração**: Estrutura config/ automática
+- **Dependências**: Instalação silenciosa de bibliotecas
+
+## Hierarquia de Processamento
+**CRÍTICO**: Ordenação por nome, pastas têm prioridade:
+
+Exemplo de estrutura:
+Capitulo1/
+├── Aula1.mp4
+├── Aula2.mp4
+Capitulo2/
+├── Aula1.mp4
+
+Ordem de processamento:
+1. Capitulo1 (pasta)
+2. Capitulo1/Aula1.mp4
+3. Capitulo1/Aula2.mp4  
+4. Capitulo2 (pasta)
+5. Capitulo2/Aula1.mp4
+
+Headers no resumo:
+# Capitulo1
+## Aula1
+## Aula2
+# Capitulo2
+## Aula1
+
+
+## Limitações Técnicas
+- **Formatos suportados**: MP4, AVI, MKV, MOV
+- **Qualidade áudio**: MP3 128kbps (padrão)
+- **Idiomas**: Português (Brasil) e Inglês (Estados Unidos)
+- **Database**: SQLite (file-based, portável)
+
+# FORMATO
+
+## Estrutura de Código
+
+# main.py
+from services.database_service import DatabaseService
+from services.course_service import CourseService
+from utils.menu_utils import MenuRenderer
+from utils.logging_utils import setup_logging
+
+def main():
+    setup_logging()
+    db = DatabaseService()
+    course_service = CourseService(db)
+    menu = MenuRenderer()
+    
+    while True:
+        choice = menu.show_main_menu()
+        
+        if choice == "1":  # Course Processor
+            course_processor_menu(course_service)
+        elif choice == "9":  # Settings
+            settings_menu()
+        elif choice == "11":  # Logs
+            show_logs()
+        elif choice == "12":  # Exit
+            break
+
+def course_processor_menu(course_service):
+    while True:
+        choice = menu.show_course_processor_menu()
+        
+        if choice == "1":  # Process Complete Course
+            directory = input("📁 Diretório do curso: ")
+            course_service.process_complete_course(directory)
+        elif choice == "2":  # Convert to Audio
+            course_service.convert_to_audio()
+        # ... outras opções
+
+
+## Camadas de Serviço
+
+# services/course_service.py
+class CourseService:
+    def __init__(self, db_service):
+        self.db = db_service
+        self.audio_service = AudioService()
+        self.ai_service = AIService()
+        self.drive_service = DriveService()
+        
+    def process_complete_course(self, directory):
+        # 1. Validar e escanear diretório
+        course_info = self.scan_course_directory(directory)
+        
+        # 2. Verificar se já foi processado
+        if self.db.course_exists(course_info.name):
+            if self.ask_resume_processing():
+                return self.resume_processing(course_info.name)
+        
+        # 3. Criar entrada na database
+        course_id = self.db.create_course(course_info)
+        
+        # 4. Processar etapas com checkpoints
+        try:
+            self.convert_videos_to_audio(course_id)
+            self.transcribe_audio_files(course_id)
+            self.generate_ai_summaries(course_id)
+            self.create_unified_audio(course_id)
+            self.upload_to_drive(course_id)
+            self.update_rss_feed(course_id)
+            
+            self.db.mark_course_completed(course_id)
+            
+        except Exception as e:
+            self.db.log_error(course_id, str(e))
+            self.offer_recovery_options(course_id)
+
+# services/ai_service.py
+class AIService:
+    def __init__(self):
+        self.claude_client = self.setup_claude()
+        self.chatgpt_client = self.setup_chatgpt()
+        self.gemini_client = self.setup_gemini()
+        
+    def process_transcription(self, transcription, prompt_file):
+        prompt = self.load_prompt(prompt_file)
+        
+        # Detectar qual IA usar (padrão: Claude)
+        client = self.get_active_client()
+        
+        response = client.send_message(prompt + transcription)
+        
+        # Sistema de continuação automática
+        full_response = response
+        while "[CONTINUA]" in response:
+            response = client.send_message("[CONTINUAR]")
+            full_response += response
+            
+        # Limpar marcadores de controle
+        return self.clean_response(full_response)
+
+
+# VALIDAÇÃO
+
+## Testes Automáticos
+- **Conversão de áudio**: Verificar integridade dos MP3
+- **Transcrição**: Validar formato e conteúdo
+- **Resumos**: Verificar estrutura Markdown
+- **Timestamps**: Validar cálculos de duração
+- **Upload**: Confirmar integridade no Google Drive
+- **RSS**: Validar XML bem formado
+
+## Validação de Entrada
+
+def validate_course_directory(directory):
+    # Verificar se diretório existe
+    if not os.path.exists(directory):
+        raise ValueError("Diretório não encontrado")
+    
+    # Verificar se contém vídeos
+    video_files = find_video_files(directory)
+    if not video_files:
+        raise ValueError("Nenhum arquivo de vídeo encontrado")
+    
+    # Verificar espaço em disco
+    required_space = calculate_required_space(video_files)
+    if not has_sufficient_space(required_space):
+        raise ValueError("Espaço em disco insuficiente")
+    
+    return True
+
+
+# SEGURANÇA
+
+## Proteção de Credenciais
+- **API Keys**: Armazenadas em config/api_keys.json (criptografadas)
+- **Google Drive**: OAuth2 com refresh tokens
+- **GitHub**: Token de acesso pessoal
+- **.gitignore**: Automático para dados sensíveis
+
+## Tratamento de Dados
+- **Backup automático**: Antes de qualquer operação destrutiva
+- **Logs auditáveis**: Todas as operações registradas
+- **Cleanup automático**: Arquivos temporários removidos
+- **Validação**: Entrada sanitizada em todas as operações
+
+# PRIORIDADES
+
+## Implementação Prioritária
+1. **Setup inicial**: Database, configurações, validações
+2. **Conversão de áudio**: Base para todas as outras operações
+3. **Transcrição**: Whisper online primeiro
+4. **Resumos via IA**: Claude como padrão
+5. **Unificação**: Áudio + timestamps + resumo
+6. **Distribuição**: Google Drive + RSS + GitHub
+7. **Recuperação**: Sistema de checkpoints
+8. **Funcionalidades individuais**: Operações isoladas
+
+## Funcionalidades Futuras
+- **Whisper local**: Docker integration
+- **Múltiplas IAs**: Gemini, Ollama
+- **TTS avançado**: Múltiplas vozes
+- **Monitoramento**: Dashboard de operações
+- **Batch processing**: Múltiplos cursos simultaneamente
+
+## Sistema de Logs
+
+# Formato de log detalhado
+[2024-01-17 14:30:22] [COURSE_PROCESSOR] [INFO] Started processing: Marketing Digital
+[2024-01-17 14:30:45] [COURSE_PROCESSOR] [SUCCESS] Converted 12 videos to audio
+[2024-01-17 14:31:10] [COURSE_PROCESSOR] [WARNING] Whisper API rate limit reached
+[2024-01-17 14:31:15] [COURSE_PROCESSOR] [INFO] Switched to local Whisper
+[2024-01-17 14:35:22] [COURSE_PROCESSOR] [ERROR] Failed to upload to Drive: Network timeout
+[2024-01-17 14:35:25] [COURSE_PROCESSOR] [INFO] Retrying upload (attempt 2/3)
+[2024-01-17 14:35:40] [COURSE_PROCESSOR] [SUCCESS] Upload completed successfully
+[2024-01-17 14:40:15] [COURSE_PROCESSOR] [SUCCESS] Course processing completed
+
+
+## Prompts Personalizáveis
+- **Localização**: `prompts/course_processor/`
+- **Formato**: Markdown (.md)
+- **Seleção**: Menu interativo por nome do arquivo
+- **Histórico**: Registro de qual prompt foi usado
+- **Versionamento**: Controle de mudanças nos prompts
+
+## Sistema de Monitoramento
+- **Operações ativas**: Progresso em tempo real
+- **Recursos**: CPU, memória, espaço em disco
+- **APIs**: Status e quotas
+- **Erros**: Alertas e sugestões de correção
+
+
+Esta especificação completa define um sistema robusto de processamento de cursos que atende todos os requisitos solicitados, com arquitetura modular, sistema de recuperação de falhas, e integração com múltiplas APIs e serviços.
+
+# PADRÃO VISUAL
+
+## 🎯 CONTEXTO
+Ao criar scripts Python CLI, você deve seguir os padrões visuais com flexibilidade contextual. Estes padrões garantem consistência, usabilidade e experiência profissional do usuário.
+
+## 📋 REQUISITOS OBRIGATÓRIOS
+
+### 1. BIBLIOTECAS E DEPENDÊNCIAS
+```python
+# IMPORTS OBRIGATÓRIOS - ORDEM FIXA
+import time
+import os
+import sys
+import json
+import logging
+from pathlib import Path
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich.box import ROUNDED
+from rich.align import Align
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from pyfiglet import Figlet
+
+# CONFIGURAÇÃO DE LOGGING (SILENCIOSO)
+logging.basicConfig(level=logging.CRITICAL)
+console = Console(quiet=False, stderr=False)
+```
+
+### 2. INICIALIZAÇÃO INTELIGENTE DE DEPENDÊNCIAS
+```python
+def check_and_install_dependencies():
+    """Verifica e instala dependências automaticamente de forma silenciosa"""
+    required_packages = ['rich', 'pyfiglet']
+    missing_packages = []
+    
+    for package in required_packages:
+        try:
+            __import__(package)
+        except ImportError:
+            missing_packages.append(package)
+    
+    if missing_packages:
+        import subprocess
+        import sys
+        for package in missing_packages:
+            try:
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', package], 
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except subprocess.CalledProcessError:
+                print(f"Error installing {package}. Please install manually: pip install {package}")
+                sys.exit(1)
+
+def initialize_app():
+    """Inicializa app com verificação inteligente de dependências"""
+    try:
+        # Tentar importar bibliotecas principais
+        from rich.console import Console
+        from pyfiglet import Figlet
+        # Se chegou aqui, dependências OK
+        os.system('cls' if os.name == 'nt' else 'clear')
+    except ImportError:
+        # Só instalar se necessário
+        check_and_install_dependencies()
+        # Limpar tela após instalação
+        os.system('cls' if os.name == 'nt' else 'clear')
+        # Reimportar após instalação
+        globals().update({
+            'Console': __import__('rich.console', fromlist=['Console']).Console,
+            'Figlet': __import__('pyfiglet', fromlist=['Figlet']).Figlet
+        })
+```
+
+### 3. SISTEMA DE CONFIGURAÇÃO
+```python
+def ensure_config_structure():
+    """Cria estrutura de configuração se não existir"""
+    config_dir = Path("config")
+    config_dir.mkdir(exist_ok=True)
+    
+    config_file = config_dir / "settings.json"
+    
+    if not config_file.exists():
+        default_config = {
+            "app_settings": {
+                "debug_mode": False,
+                "auto_save": True
+            },
+            "apis": {
+                "openai_api_key": "",
+                "anthropic_api_key": "",
+                "google_ai_key": ""
+            },
+            "user_preferences": {
+                "theme": "dark",
+                "language": "en"
+            }
+        }
+        
+        with open(config_file, 'w') as f:
+            json.dump(default_config, f, indent=2)
+    
+    return config_file
+
+def load_config():
+    """Carrega configuração do arquivo JSON"""
+    config_file = ensure_config_structure()
+    with open(config_file, 'r') as f:
+        return json.load(f)
+
+def save_config(config):
+    """Salva configuração no arquivo JSON"""
+    config_file = Path("config/settings.json")
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=2)
+
+def ensure_gitignore():
+    """Cria .gitignore se houver informações sensíveis"""
+    gitignore_content = """# Configuration files with sensitive data
+config/
+*.env
+*.key
+*_key.txt
+credentials.json
+secrets.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+"""
+    
+    gitignore_path = Path(".gitignore")
+    if not gitignore_path.exists():
+        with open(gitignore_path, 'w') as f:
+            f.write(gitignore_content)
+```
+
+### 4. PALETA DE CORES NORD (USO MANDATÓRIO)
+- **bright_white**: Dados principais, valores importantes
+- **white**: Labels, campos secundários, texto explicativo
+- **bright_blue**: Títulos, bordas, elementos interativos
+- **bright_cyan**: Arte ASCII, cabeçalhos especiais
+- **bright_green**: Status positivo, sucessos, confirmações
+- **bright_yellow**: Avisos, alertas, informações importantes
+- **bright_red**: Erros, falhas, status crítico
+- **dim white**: Texto auxiliar, unidades, informações secundárias
+
+### 5. SISTEMA DE ESTRUTURA DE MENU INTELIGENTE
+
+#### Detecção Automática de Estrutura:
+```python
+def analyze_menu_structure(functions_list):
+    """Analisa lista de funções e decide estrutura de menu"""
+    core_functions = [f for f in functions_list if f.get('category') == 'core']
+    
+    # Se não há categorização explícita, inferir baseado no contexto
+    if not core_functions:
+        core_functions = [f for f in functions_list if is_core_function(f)]
+    
+    # Estrutura: 1 core = menu direto, 2+ cores = submenu
+    if len(core_functions) == 1:
+        return "direct"
+    elif len(core_functions) > 1:
+        return "grouped"
+    else:
+        return "direct"
+
+def is_core_function(function_info):
+    """Determina se função é core baseado no contexto"""
+    core_keywords = ['process', 'generate', 'create', 'analyze', 'download', 'upload', 'parse']
+    non_core_keywords = ['settings', 'config', 'about', 'help', 'info', 'preferences']
+    
+    name = function_info.get('name', '').lower()
+    
+    if any(keyword in name for keyword in non_core_keywords):
+        return False
+    
+    if any(keyword in name for keyword in core_keywords):
+        return True
+        
+    # Por padrão, considerar core se não especificado
+    return True
+
+def auto_categorize_functions(functions_list, app_context=None):
+    """Categoriza funções automaticamente baseado no contexto"""
+    if app_context:
+        # Usar nome do app para determinar categoria principal
+        main_category = infer_main_category(app_context)
+    else:
+        main_category = "Core Functions"
+    
+    categorized = {
+        "core": [],
+        "config": [],
+        "utils": [],
+        "info": []
+    }
+    
+    for func in functions_list:
+        if func.get('category'):
+            # Respeitar categoria explícita
+            categorized[func['category']].append(func)
+        else:
+            # Auto-categorizar
+            category = infer_function_category(func)
+            categorized[category].append(func)
+    
+    return categorized, main_category
+
+def infer_main_category(app_name):
+    """Infere categoria principal baseado no nome do app"""
+    category_map = {
+        'note': 'Notes Processing',
+        'audio': 'Audio Processing', 
+        'video': 'Video Processing',
+        'image': 'Image Processing',
+        'data': 'Data Processing',
+        'file': 'File Management',
+        'web': 'Web Tools',
+        'api': 'API Tools',
+        'music': 'Music Processing',
+        'text': 'Text Processing'
+    }
+    
+    app_lower = app_name.lower()
+    for key, category in category_map.items():
+        if key in app_lower:
+            return f"🎯 {category}"
+    
+    return "🎯 Core Functions"
+```
+
+#### Grupos Dinâmicos:
+```python
+def get_menu_groups(categorized_functions, main_category):
+    """Retorna grupos de menu baseado nas funções categorizadas"""
+    groups = {}
+    
+    if categorized_functions["core"]:
+        groups["core"] = {
+            "title": main_category,
+            "description": "Primary application functions",
+            "priority": 1,
+            "functions": categorized_functions["core"]
+        }
+    
+    if categorized_functions["config"]:
+        groups["config"] = {
+            "title": "⚙️ Configuration",
+            "description": "System and user settings", 
+            "priority": 2,
+            "functions": categorized_functions["config"]
+        }
+    
+    if categorized_functions["utils"]:
+        groups["utils"] = {
+            "title": "🔧 Utilities",
+            "description": "Tools and maintenance",
+            "priority": 3,
+            "functions": categorized_functions["utils"]
+        }
+    
+    if categorized_functions["info"]:
+        groups["info"] = {
+            "title": "📖 Information", 
+            "description": "Help and documentation",
+            "priority": 4,
+            "functions": categorized_functions["info"]
+        }
+    
+    return groups
+```
+
+### 6. SISTEMA DE CONFIGURAÇÕES INTELIGENTE
+
+#### Estrutura de Menu de Configurações:
+```python
+def create_config_menu_structure(main_functions):
+    """Cria estrutura de menu de configurações baseado nas funções principais"""
+    config_groups = {
+        "general": {
+            "title": "🌐 General Settings",
+            "options": ["APIs & Keys", "User Preferences", "App Settings"]
+        }
+    }
+    
+    # Adicionar grupos específicos por função se necessário
+    core_functions = [f for f in main_functions if is_core_function(f)]
+    
+    for func in core_functions:
+        if needs_specific_config(func):
+            group_name = func['name'].lower().replace(' ', '_')
+            config_groups[group_name] = {
+                "title": f"⚙️ {func['name']} Settings",
+                "options": get_specific_config_options(func)
+            }
+    
+    return config_groups
+
+def needs_specific_config(function_info):
+    """Determina se função precisa de configurações específicas"""
+    specific_config_indicators = [
+        'ai', 'process', 'generate', 'analyze', 'prompt', 'model'
+    ]
+    
+    name = function_info.get('name', '').lower()
+    description = function_info.get('description', '').lower()
+    
+    return any(indicator in name or indicator in description 
+              for indicator in specific_config_indicators)
+```
+
+### 7. SISTEMA DE EMOJIS INTELIGENTE
+
+#### Análise de Viabilidade por Menu:
+```python
+def analyze_emoji_viability(menu_options):
+    """Analisa se emojis são viáveis para todo o menu"""
+    viable_count = 0
+    
+    for option in menu_options:
+        if find_natural_emoji(option) is not None:
+            viable_count += 1
+    
+    viability_ratio = viable_count / len(menu_options) if menu_options else 0
+    return viability_ratio >= 0.8
+
+def find_natural_emoji(option_info):
+    """Encontra emoji natural para opção específica"""
+    EMOJI_MAPPING = {
+        # Ações principais
+        'download': '⬇️', 'upload': '⬆️', 'search': '🔍', 'process': '⚙️',
+        'create': '➕', 'generate': '🔄', 'analyze': '📊', 'parse': '📝',
+        'convert': '🔄', 'transform': '🔄', 'edit': '✏️', 'view': '👁️',
+        
+        # Configurações
+        'settings': '⚙️', 'config': '⚙️', 'preferences': '⚙️',
+        
+        # Dados e arquivos
+        'file': '📄', 'folder': '📁', 'data': '📊', 'report': '📋',
+        'export': '📤', 'import': '📥', 'backup': '💾', 'restore': '⏮️',
+        
+        # Áudio e mídia
+        'audio': '🎵', 'music': '🎵', 'sound': '🔊', 'podcast': '🎧',
+        'video': '🎬', 'image': '🖼️', 'photo': '📸',
+        
+        # Texto e documentos
+        'note': '📝', 'text': '📝', 'document': '📃', 'book': '📚',
+        'write': '✍️', 'read': '📖',
+        
+        # Informações
+        'about': '📋', 'help': '❓', 'info': 'ℹ️', 'manual': '📖',
+        
+        # Navegação
+        'back': '↩️', 'exit': '🚪', 'home': '🏠', 'menu': '📋',
+        
+        # Status
+        'start': '🚀', 'stop': '⏹️', 'pause': '⏸️', 'play': '▶️',
+        'check': '✅', 'test': '🧪', 'monitor': '📊'
+    }
+    
+    name = option_info.get('name', '').lower()
+    action = option_info.get('action', '').lower()
+    
+    # Buscar por palavras-chave
+    for keyword, emoji in EMOJI_MAPPING.items():
+        if keyword in name or keyword in action:
+            return emoji
+    
+    return None
+
+def apply_emojis_to_menu(menu_options):
+    """Aplica emojis a opções de menu se viável"""
+    if not analyze_emoji_viability(menu_options):
+        return menu_options
+    
+    updated_options = []
+    for option in menu_options:
+        emoji = find_natural_emoji(option)
+        if emoji:
+            option['emoji'] = emoji
+        else:
+            option['emoji'] = '🔧'  # Fallback
+        updated_options.append(option)
+    
+    return updated_options
+```
+
+### 8. FUNÇÕES DE RENDERIZAÇÃO MELHORADAS
+
+```python
+def render_main_title(app_name: str):
+    """Renderiza título principal - APENAS menu principal"""
+    os.system('cls' if os.name == 'nt' else 'clear')
+    figlet = Figlet(font="big")
+    art = figlet.renderText(app_name)
+    centered_art = Align.center(Text(art, style="bold bright_cyan"))
+    console.print(centered_art)
+    console.print()
+
+def render_submenu_header(menu_name: str, emoji: str = "⚙️"):
+    """Cabeçalho para submenus - SEM arte ASCII"""
+    os.system('cls' if os.name == 'nt' else 'clear')
+    header = f"{emoji} {menu_name}"
+    console.print(f"\n[bold bright_cyan]{header}[/]")
+    console.print("[bright_blue]" + "─" * len(header) + "[/]")
+    console.print()
+
+def create_menu_panel(content: str, title: str) -> Panel:
+    """Cria painel de menu padronizado"""
+    return Panel(
+        content,
+        title=f"[bold bright_blue]{title}[/]",
+        border_style="bright_blue",
+        box=ROUNDED,
+        padding=(1, 2)
+    )
+
+def render_menu_option(index: int, option: dict, use_emojis: bool = False) -> str:
+    """Renderiza uma opção de menu"""
+    name = option.get('name', '')
+    description = option.get('description', '')
+    emoji = option.get('emoji', '') if use_emojis else ''
+    
+    if emoji:
+        base = f"[{index}] {emoji} [bright_white]{name}[/]"
+    else:
+        base = f"[{index}] [bright_white]{name}[/]"
+    
+    if description:
+        base += f" [dim white]- {description}[/]"
+    
+    return base
+
+def get_menu_choice(prompt: str = "Enter your choice", show_back: bool = True) -> str:
+    """Input padronizado com ESC"""
+    try:
+        if show_back:
+            choice = console.input(f"\n[bold bright_white]➤ {prompt} (ESC to go back): [/]").strip()
+        else:
+            choice = console.input(f"\n[bold bright_white]➤ {prompt}: [/]").strip()
+        return choice
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[bright_yellow]⚠️ Returning to previous menu...[/]")
+        return "back"
+```
+
+### 9. SISTEMA DE PROGRESSO INTELIGENTE
+
+```python
+def should_show_progress(operation_type: str, estimated_time: float = 0) -> bool:
+    """Determina se deve mostrar progresso baseado no tipo de operação"""
+    always_show = ['download', 'upload', 'process', 'analyze', 'convert', 'sync']
+    
+    if operation_type in always_show:
+        return True
+    
+    if estimated_time > 2.0:
+        return True
+    
+    return False
+
+def execute_with_smart_progress(operation_func, operation_type: str, description: str, *args, **kwargs):
+    """Executa operação com progresso inteligente"""
+    estimated_time = kwargs.pop('estimated_time', 0)
+    
+    if should_show_progress(operation_type, estimated_time):
+        with create_progress_bar(description) as progress:
+            task = progress.add_task(description, total=100)
+            
+            try:
+                result = operation_func(progress, task, *args, **kwargs)
+                progress.update(task, completed=100)
+                return result
+            except Exception as e:
+                progress.update(task, completed=100)
+                console.print(f"\n[bright_red]✗ Error: {str(e)}[/]")
+                return None
+    else:
+        # Executar diretamente sem progresso
+        try:
+            return operation_func(None, None, *args, **kwargs)
+        except Exception as e:
+            console.print(f"\n[bright_red]✗ Error: {str(e)}[/]")
+            return None
+
+def create_progress_bar(description: str = "Processing"):
+    """Cria barra de progresso padronizada"""
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[bold bright_blue]{task.description}[/]"),
+        BarColumn(bar_width=40, style="bright_blue", complete_style="bright_green"),
+        TaskProgressColumn(),
+        console=console,
+        transient=False
+    )
+```
+
+### 10. SISTEMA DE NAVEGAÇÃO E CONTROLE
+
+```python
+def handle_menu_navigation(choice: str, menu_options: list, current_menu: str = "main"):
+    """Gerencia navegação entre menus"""
+    if choice.lower() in ['back', 'esc', 'b']:
+        return "back"
+    
+    if choice.lower() in ['exit', 'quit', 'q']:
+        return "exit"
+    
+    if choice.lower() in ['0'] and current_menu != "main":
+        return "back"
+    
+    try:
+        index = int(choice) - 1
+        if 0 <= index < len(menu_options):
+            return menu_options[index]
+    except ValueError:
+        pass
+    
+    console.print(f"[bright_yellow]⚠️ Invalid choice: {choice}[/]")
+    return None
+
+def confirm_action(message: str, default: bool = False) -> bool:
+    """Confirmação padronizada para ações"""
+    default_text = "Y/n" if default else "y/N"
+    
+    try:
+        response = console.input(f"\n[bold bright_white]➤ {message} ({default_text}): [/]").strip().lower()
+        
+        if not response:
+            return default
+        
+        return response in ['y', 'yes', 'true', '1']
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[bright_yellow]⚠️ Cancelled by user[/]")
+        return False
+```
+
+### 11. SISTEMA DE STATUS PADRONIZADO
+
+```python
+def show_status(status_type: str, message: str, details: str = None):
+    """Mostra status padronizado"""
+    status_styles = {
+        "success": "[bright_green]✓[/]",
+        "error": "[bright_red]✗[/]", 
+        "warning": "[bright_yellow]⚠️[/]",
+        "info": "[bright_blue]ℹ️[/]",
+        "processing": "[bright_blue]⟳[/]"
+    }
+    
+    icon = status_styles.get(status_type, "[white]•[/]")
+    console.print(f"\n{icon} [bright_white]{message}[/]")
+    
+    if details:
+        console.print(f"   [dim white]{details}[/]")
+```
+
+### 12. TEMPLATE DE APLICAÇÃO COMPLETA
+
+```python
+def create_app_template(app_name: str, functions_list: list):
+    """Cria template completo de aplicação"""
+    
+    # Garantir estrutura de configuração
+    ensure_config_structure()
+    ensure_gitignore()
+    
+    # Analisar estrutura de menu
+    structure_type = analyze_menu_structure(functions_list)
+    categorized_functions, main_category = auto_categorize_functions(functions_list, app_name)
+    
+    # Configurar grupos de menu
+    menu_groups = get_menu_groups(categorized_functions, main_category)
+    
+    # Configurar menu de configurações
+    config_menu_structure = create_config_menu_structure(functions_list)
+    
+    return {
+        "structure_type": structure_type,
+        "menu_groups": menu_groups,
+        "config_structure": config_menu_structure,
+        "main_category": main_category
+    }
+
+def main():
+    """Função principal - template de uso"""
+    
+    # Inicializar aplicação
+    initialize_app()
+    
+    # Definir funções da aplicação
+    app_functions = [
+        {"name": "Process Notes", "description": "Process audio notes with AI", "category": "core"},
+        {"name": "Manage Library", "description": "Organize processed notes", "category": "core"},
+        {"name": "Configure AI", "description": "Setup AI settings", "category": "config"},
+        {"name": "About", "description": "Application information", "category": "info"}
+    ]
+    
+    # Criar estrutura da aplicação
+    app_structure = create_app_template("NoteProcessor", app_functions)
+    
+    # Loop principal
+    while True:
+        if app_structure["structure_type"] == "direct":
+            render_direct_menu(app_structure)
+        else:
+            render_grouped_menu(app_structure)
+        
+        choice = get_menu_choice()
+        
+        if choice == "exit":
+            break
+        
+        # Processar escolha...
+        result = handle_menu_navigation(choice, app_functions)
+        
+        if result == "back":
+            continue
+        elif result == "exit":
+            break
+        elif result:
+            # Executar função selecionada
+            execute_function(result)
+
+if __name__ == "__main__":
+    main()
+```
+
+## 🚀 DIRETRIZES DE IMPLEMENTAÇÃO
+
+### Regras de Ouro:
+1. **Flexibilidade Contextual**: Adaptar estrutura ao contexto específico do app
+2. **Configuração Inteligente**: Criar apenas grupos de configuração necessários
+3. **Emojis Viáveis**: Usar regra 80% para decisão de emojis
+4. **Dependências Silenciosas**: Instalar automaticamente sem interrupção
+5. **Estrutura Limpa**: Sempre limpar tela após inicialização
+6. **Configuração Segura**: Criar .gitignore quando houver dados sensíveis
+7. **Progresso Inteligente**: Mostrar progresso apenas quando necessário
+8. **Navegação Consistente**: ESC sempre retorna ao menu anterior
+
+### Quando Criar Novos Elementos:
+
+#### Novos Grupos de Menu:
+- **Especificado pelo usuário**: Seguir exatamente as instruções
+- **Não especificado**: Inferir baseado no contexto da aplicação
+- **Múltiplas funções similares**: Agrupar logicamente
+
+#### Configurações Específicas:
+- **Funções com IA**: Criar grupo para prompts e modelos
+- **Funções com APIs**: Agrupar por serviço ou funcionalidade
+- **Configurações gerais**: Sempre em grupo "General Settings"
+
+#### Estrutura de Arquivos:
+- **Dados sensíveis**: Sempre criar config/ e .gitignore
+- **Sem dados sensíveis**: Estrutura mínima
+- **Múltiplas funcionalidades**: Considerar subpastas organizacionais
+
+### Adaptação por Contexto:
+
+#### Apps de Processamento (AI, Mídia, Dados):
+- Priorizar barras de progresso
+- Configurações específicas por função
+- Grupos baseados em tipos de processamento
+
+#### Apps de Gestão (Arquivos, Bibliotecas):
+- Foco em navegação e organização
+- Configurações de preferências
+- Grupos baseados em tipos de dados
+
+#### Apps de Utilidades (Ferramentas, Conversores):
+- Interface direta e eficiente
+- Configurações mínimas
+- Grupos baseados em categorias de ferramentas
+
+## 🎯 VALIDAÇÃO FINAL
+
+### Checklist Obrigatório:
+- [ ] Dependências instaladas silenciosamente
+- [ ] Tela limpa após inicialização
+- [ ] Estrutura de menu apropriada ao contexto
+- [ ] Análise de emojis por menu (80% rule)
+- [ ] Configuração JSON criada automaticamente
+- [ ] .gitignore criado se necessário
+- [ ] Navegação ESC funcionando
+- [ ] Progresso inteligente implementado
+- [ ] Cores Nord respeitadas
+- [ ] Sem logs ou mensagens desnecessárias
+
+**ESTAS DIRETRIZES SÃO OBRIGATÓRIAS E DEVEM SER ADAPTADAS AO CONTEXTO ESPECÍFICO DE CADA APLICAÇÃO**
+
+
+

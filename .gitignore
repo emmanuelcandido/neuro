@@ -4,3 +4,29 @@ config/credentials.json
 config/drive_token.json
 github/
 config/github_config.json
+
+# Database
+data/neurodeamon.db
+*.db
+
+# Logs
+data/logs/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# User-generated content
+data/courses/
+
+# Temporary files
+temp/
+
+# IDE/OS specific
+.vscode/
+.idea/
+.DS_Store
+
+# Secrets
+config/api_keys.json

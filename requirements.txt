@@ -5,3 +5,7 @@ google-auth-oauthlib==1.2.0
 google-api-python-client==2.111.0
 PyGithub==1.59.1
 gitpython==3.1.40
+openai==1.35.11
+anthropic==0.27.0
+google-generativeai==0.1.0rc1
+ollama==0.2.0
